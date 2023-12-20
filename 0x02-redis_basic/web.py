@@ -1,37 +1,38 @@
 #!/usr/bin/env python3
-'''A module with tools for request caching and tracking.'''
-import requests
+'''A module with tools for request caching and tracking.
+'''
 import redis
-import time
-
-r = redis.StrictRedis()
-'''The module-level Redis instance.'''
-
-
-def track_url_count(func):
-    def wrapper(url):
-        r.incr(f"count:{url}")
-        return func(url)
-    return wrapper
+import requests
+from functools import wraps
+from typing import Callable
 
 
-@track_url_count
-def get_page(url):
-    cached_content = r.get(url)
-    if cached_content:
-        return cached_content.decode('utf-8')
-
-    response = requests.get(url)
-    content = response.text
-
-    r.setex(url, 10, content)
-    return content
+redis_store = redis.Redis()
+'''The module-level Redis instance.
+'''
 
 
-if __name__ == "__main__":
-    # Test the get_page function
-    test_url = 'http://slowwly.robertomurray.co.uk/delay/10000/url/'
-    test_url += 'http://www.google.co.uk'
-    for _ in range(5):
-        print(get_page(test_url))
-        time.sleep(1)  # Delay to simulate separate calls
+def data_cacher(method: Callable) -> Callable:
+    '''Caches the output of fetched data.
+    '''
+    @wraps(method)
+    def invoker(url) -> str:
+        '''The wrapper function for caching the output.
+        '''
+        redis_store.incr(f'count:{url}')
+        result = redis_store.get(f'result:{url}')
+        if result:
+            return result.decode('utf-8')
+        result = method(url)
+        redis_store.set(f'count:{url}', 0)
+        redis_store.setex(f'result:{url}', 10, result)
+        return result
+    return invoker
+
+
+@data_cacher
+def get_page(url: str) -> str:
+    '''Returns the content of a URL after caching the request's response,
+    and tracking the request.
+    '''
+    return requests.get(url).text
