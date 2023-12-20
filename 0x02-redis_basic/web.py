@@ -1,8 +1,11 @@
+#!/usr/bin/env python3
+'''A module with tools for request caching and tracking.'''
 import requests
 import redis
 import time
 
 r = redis.StrictRedis()
+'''The module-level Redis instance.'''
 
 
 def track_url_count(func):
